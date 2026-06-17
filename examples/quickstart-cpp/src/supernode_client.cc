@@ -6,6 +6,7 @@
 
 #include <chrono>
 #include <ctime>
+#include <deque>
 #include <grpcpp/grpcpp.h>
 #include <iomanip>
 #include <iostream>
@@ -81,7 +82,11 @@ std::string utc_iso_timestamp() {
           .count();
   std::time_t time = clock::to_time_t(now);
   std::tm tm{};
+#ifdef _WIN32
+  gmtime_s(&tm, &time);
+#else
   gmtime_r(&time, &tm);
+#endif
   char buf[32];
   std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &tm);
   std::ostringstream oss;
@@ -483,6 +488,12 @@ public:
   }
 
   bool pull_message(flwr::proto::Message *message) {
+    if (!pending_messages_.empty()) {
+      *message = std::move(pending_messages_.front());
+      pending_messages_.pop_front();
+      return true;
+    }
+
     flwr::proto::PullMessagesRequest request;
     request.mutable_node()->set_node_id(node_id_);
     flwr::proto::PullMessagesResponse response;
@@ -495,18 +506,27 @@ public:
     if (response.messages_list_size() == 0) {
       return false;
     }
-    *message = response.messages_list(0);
-    if (!message->has_content() || message->content().items_size() == 0) {
-      if (response.message_object_trees_size() == 0 ||
-          response.message_object_trees(0).children_size() == 0) {
-        throw std::runtime_error("Pulled message has no inline content or object tree");
+
+    for (int idx = 0; idx < response.messages_list_size(); ++idx) {
+      flwr::proto::Message pulled = response.messages_list(idx);
+      if (!pulled.has_content() || pulled.content().items_size() == 0) {
+        if (response.message_object_trees_size() <= idx ||
+            response.message_object_trees(idx).children_size() == 0) {
+          throw std::runtime_error(
+              "Pulled message has no inline content or matching object tree");
+        }
+        const auto &message_tree = response.message_object_trees(idx);
+        const auto &recorddict_tree = message_tree.children(0);
+        *pulled.mutable_content() =
+            inflate_recorddict(pulled.metadata().run_id(), recorddict_tree);
+        confirm_message_received(pulled.metadata().run_id(),
+                                 message_tree.object_id());
       }
-      const auto &recorddict_tree = response.message_object_trees(0).children(0);
-      *message->mutable_content() =
-          inflate_recorddict(message->metadata().run_id(), recorddict_tree);
-      confirm_message_received(message->metadata().run_id(),
-                               response.message_object_trees(0).object_id());
+      pending_messages_.push_back(std::move(pulled));
     }
+
+    *message = std::move(pending_messages_.front());
+    pending_messages_.pop_front();
     return true;
   }
 
@@ -618,12 +638,16 @@ private:
     }
     std::string data;
     for (int32_t idx : parse_json_int_list(body, "arraychunk_ids")) {
-      if (idx < 0 || idx >= tree.children_size() ||
-          static_cast<size_t>(idx) >= child_ids.size()) {
+      if (idx < 0 || static_cast<size_t>(idx) >= child_ids.size()) {
         throw std::runtime_error("Invalid Array chunk index");
       }
-      const auto &chunk_tree = tree.children(idx);
-      const std::string chunk_content = pull_object(run_id, chunk_tree.object_id());
+      const flwr::proto::ObjectTree *chunk_tree =
+          find_child_tree(tree, child_ids.at(static_cast<size_t>(idx)));
+      if (chunk_tree == nullptr) {
+        throw std::runtime_error("Array chunk object missing from ObjectTree");
+      }
+      const std::string chunk_content =
+          pull_object(run_id, chunk_tree->object_id());
       data += object_body(chunk_content, "ArrayChunk");
     }
     array.set_data(data);
@@ -685,6 +709,7 @@ private:
   EvpPkeyPtr private_key_;
   std::string public_key_;
   uint64_t node_id_ = 0;
+  std::deque<flwr::proto::Message> pending_messages_;
 };
 
 } // namespace

@@ -2,6 +2,7 @@
 
 #include <stdexcept>
 
+namespace flwr_quickstart {
 namespace {
 
 flwr::proto::Array array_to_proto(const flwr_local::Array &array) {
@@ -255,6 +256,18 @@ flwr_local::ConfigsRecord metrics_to_config_record(const flwr_local::Metrics &me
   return out;
 }
 
+template <typename MapT>
+const typename MapT::mapped_type &required_record(const MapT &records,
+                                                  const std::string &key,
+                                                  const std::string &kind) {
+  const auto it = records.find(key);
+  if (it == records.end()) {
+    throw std::runtime_error("RecordSet missing required " + kind +
+                             " record: " + key);
+  }
+  return it->second;
+}
+
 } // namespace
 
 flwr_local::RecordSet
@@ -299,8 +312,10 @@ recorddict_to_proto(const flwr_local::RecordSet &recordset) {
 
 flwr_local::FitIns recorddict_to_fit_ins(const flwr_local::RecordSet &recordset) {
   const auto &parameters_record =
-      recordset.getParametersRecords().at("fitins.parameters");
-  const auto &configs_record = recordset.getConfigsRecords().at("fitins.config");
+      required_record(recordset.getParametersRecords(), "fitins.parameters",
+                      "parameters");
+  const auto &configs_record =
+      required_record(recordset.getConfigsRecords(), "fitins.config", "config");
   flwr_local::Config config;
   for (const auto &[key, value] : configs_record) {
     config[key] = scalar_from_config_value(value);
@@ -312,9 +327,11 @@ flwr_local::FitIns recorddict_to_fit_ins(const flwr_local::RecordSet &recordset)
 flwr_local::EvaluateIns
 recorddict_to_evaluate_ins(const flwr_local::RecordSet &recordset) {
   const auto &parameters_record =
-      recordset.getParametersRecords().at("evaluateins.parameters");
+      required_record(recordset.getParametersRecords(), "evaluateins.parameters",
+                      "parameters");
   const auto &configs_record =
-      recordset.getConfigsRecords().at("evaluateins.config");
+      required_record(recordset.getConfigsRecords(), "evaluateins.config",
+                      "config");
   flwr_local::Config config;
   for (const auto &[key, value] : configs_record) {
     config[key] = scalar_from_config_value(value);
@@ -391,3 +408,5 @@ recorddict_from_evaluate_res(const flwr_local::EvaluateRes &evaluate_res) {
                           {{"code", 0}, {"message", std::string("Success")}}}});
   return out;
 }
+
+} // namespace flwr_quickstart

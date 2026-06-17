@@ -98,7 +98,7 @@ def bytes_to_ndarray(tensor_bytes: bytes) -> np.ndarray:
     if len(tensor_bytes) % 8 != 0:
         raise ValueError("C++ tensor byte length must be divisible by 8")
     values = [
-        struct.unpack("d", tensor_bytes[idx : idx + 8])[0]
+        struct.unpack("<d", tensor_bytes[idx : idx + 8])[0]
         for idx in range(0, len(tensor_bytes), 8)
     ]
     return np.asarray(values, dtype=np.float64)
@@ -106,4 +106,4 @@ def bytes_to_ndarray(tensor_bytes: bytes) -> np.ndarray:
 
 def ndarray_to_bytes(array: np.ndarray) -> bytes:
     values = np.asarray(array, dtype=np.float64).tolist()
-    return struct.pack("%sd" % len(values), *values)
+    return struct.pack("<%sd" % len(values), *values)

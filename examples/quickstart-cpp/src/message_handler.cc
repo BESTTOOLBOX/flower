@@ -2,11 +2,13 @@
 
 #include "recorddict_serde.h"
 
+#include <atomic>
 #include <chrono>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
 
+namespace flwr_quickstart {
 namespace {
 
 double unix_seconds_now() {
@@ -16,12 +18,12 @@ double unix_seconds_now() {
 }
 
 std::string make_message_id(uint64_t node_id) {
-  static uint64_t counter = 0;
+  static std::atomic<uint64_t> counter{0};
   std::ostringstream oss;
   oss << "cpp-" << node_id << "-" << std::chrono::duration_cast<std::chrono::microseconds>(
                                 std::chrono::system_clock::now().time_since_epoch())
                                 .count()
-      << "-" << counter++;
+      << "-" << counter.fetch_add(1, std::memory_order_relaxed);
   return oss.str();
 }
 
@@ -88,3 +90,5 @@ flwr::proto::Message handle_message(flwr_local::Client *client,
 
   throw std::runtime_error("Unknown Flower message type: " + type);
 }
+
+} // namespace flwr_quickstart

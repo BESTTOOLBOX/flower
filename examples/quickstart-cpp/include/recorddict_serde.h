@@ -3,6 +3,8 @@
 #include "flwr/proto/recorddict.pb.h"
 #include "typing.h"
 
+namespace flwr_quickstart {
+
 flwr_local::RecordSet
 recorddict_from_proto(const flwr::proto::RecordDict &recorddict);
 
@@ -25,3 +27,5 @@ recorddict_from_fit_res(const flwr_local::FitRes &fit_res);
 
 flwr_local::RecordSet
 recorddict_from_evaluate_res(const flwr_local::EvaluateRes &evaluate_res);
+
+} // namespace flwr_quickstart
