@@ -16,8 +16,18 @@ push the resulting objects back through the SuperLink object store.
 
 ## Acknowledgements
 
-Many thanks to the original contributors to this code:
+Many thanks to the contributors to this code:
 
+For This Version:
+
+- Jiaxiang Geng (Duke Kunshan University, main contributor)
+- Yiyi Lu (Duke Kunshan University, main contributor)
+- Lunyu Zhao (Duke Kunshan University, main contributor)
+- Bing Luo (Duke Kunshan University, director)
+
+Edge-Intelligence-Lab Fork: https://github.com/Edge-Intelligence-Lab/flower-C--SDK
+
+For Previous Version:
 - Lekang Jiang (original author and main contributor)
 - Francisco Jose Solis (code re-organization)
 - Andreea Zaharia (training algorithm and data generation)
