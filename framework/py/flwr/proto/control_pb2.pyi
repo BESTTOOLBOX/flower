@@ -95,18 +95,21 @@ class StartRunResponse(google.protobuf.message.Message):
     RUN_ID_FIELD_NUMBER: builtins.int
     NOTE_FIELD_NUMBER: builtins.int
     SERIES_ID_FIELD_NUMBER: builtins.int
+    FEDERATION_FIELD_NUMBER: builtins.int
     run_id: builtins.int
     note: builtins.str
     series_id: builtins.int
+    federation: builtins.str
     def __init__(
         self,
         *,
         run_id: builtins.int | None = ...,
         note: builtins.str | None = ...,
         series_id: builtins.int | None = ...,
+        federation: builtins.str = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["_note", b"_note", "_run_id", b"_run_id", "_series_id", b"_series_id", "note", b"note", "run_id", b"run_id", "series_id", b"series_id"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["_note", b"_note", "_run_id", b"_run_id", "_series_id", b"_series_id", "note", b"note", "run_id", b"run_id", "series_id", b"series_id"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["_note", b"_note", "_run_id", b"_run_id", "_series_id", b"_series_id", "federation", b"federation", "note", b"note", "run_id", b"run_id", "series_id", b"series_id"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_note", b"_note"]) -> typing.Literal["note"] | None: ...
     @typing.overload
@@ -218,16 +221,21 @@ class ListRunSeriesRequest(google.protobuf.message.Message):
 
     UPDATED_BEFORE_FIELD_NUMBER: builtins.int
     LIMIT_FIELD_NUMBER: builtins.int
+    FEDERATION_ID_FIELD_NUMBER: builtins.int
     updated_before: builtins.str
     limit: builtins.int
+    federation_id: builtins.str
     def __init__(
         self,
         *,
         updated_before: builtins.str | None = ...,
         limit: builtins.int | None = ...,
+        federation_id: builtins.str | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["_limit", b"_limit", "_updated_before", b"_updated_before", "limit", b"limit", "updated_before", b"updated_before"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["_limit", b"_limit", "_updated_before", b"_updated_before", "limit", b"limit", "updated_before", b"updated_before"]) -> None: ...
+    def HasField(self, field_name: typing.Literal["_federation_id", b"_federation_id", "_limit", b"_limit", "_updated_before", b"_updated_before", "federation_id", b"federation_id", "limit", b"limit", "updated_before", b"updated_before"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing.Literal["_federation_id", b"_federation_id", "_limit", b"_limit", "_updated_before", b"_updated_before", "federation_id", b"federation_id", "limit", b"limit", "updated_before", b"updated_before"]) -> None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing.Literal["_federation_id", b"_federation_id"]) -> typing.Literal["federation_id"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_limit", b"_limit"]) -> typing.Literal["limit"] | None: ...
     @typing.overload
@@ -875,9 +883,14 @@ global___ConfigureSimulationFederationRequest = ConfigureSimulationFederationReq
 class ConfigureSimulationFederationResponse(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
+    FEDERATION_NAME_FIELD_NUMBER: builtins.int
+    federation_name: builtins.str
     def __init__(
         self,
+        *,
+        federation_name: builtins.str = ...,
     ) -> None: ...
+    def ClearField(self, field_name: typing.Literal["federation_name", b"federation_name"]) -> None: ...
 
 global___ConfigureSimulationFederationResponse = ConfigureSimulationFederationResponse
 

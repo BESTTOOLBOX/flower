@@ -105,7 +105,7 @@ MAX_NAME_LENGTH = 32  # max length for app names; also used for federation names
 NOOP_FEDERATION = f"@{NOOP_ACCOUNT_NAME}/default"
 NOOP_FEDERATION_DESCRIPTION = "A federation for testing and development purposes."
 DEFAULT_SIMULATION_CONFIG = SimulationConfig(
-    num_supernodes=10,
+    num_supernodes=2,
     client_resources_num_cpus=2,
     client_resources_num_gpus=0.0,
     backend="ray",
@@ -115,6 +115,11 @@ DEFAULT_SIMULATION_CONFIG = SimulationConfig(
     init_args_logging_level="WARNING",
     init_args_log_to_driver=True,
 )
+
+
+# Default federation names for every Flower account
+DEFAULT_FEDERATION_SIMULATION = "workspace"
+
 
 # Constants for exit handling
 FORCE_EXIT_TIMEOUT_SECONDS = 5  # Used in `flwr_exit` function
@@ -177,14 +182,6 @@ class InvitationStatus(StrEnum):
     REJECTED = "rejected"
     REVOKED = "revoked"
     EXPIRED = "expired"
-
-
-class RunType(StrEnum):
-    """Supported run types."""
-
-    AGENT_APP = "agentapp"
-    SERVER_APP = "serverapp"
-    SIMULATION = "simulation"
 
 
 class RunTime(StrEnum):

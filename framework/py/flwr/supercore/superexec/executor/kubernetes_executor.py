@@ -14,6 +14,9 @@
 # ==============================================================================
 """Kubernetes executor for SuperExec TaskExecutor processes."""
 
+
+import importlib
+import re
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -52,6 +55,15 @@ _EXECUTOR_OWNED_LABELS = frozenset(
 )
 _APPIO_CREDENTIAL_SECRET_SUFFIX = "-appio"
 _COMPLETED_POD_SWEEP_INTERVAL_SECONDS = 60.0
+_FORBIDDEN_TASKEXECUTOR_ENV_NAMES = frozenset(
+    {
+        "FLWR_MODEL_API_KEY",
+        "BRAVE_API_KEY",
+        "TAVILY_API_KEY",
+        "EXA_API_KEY",
+    }
+)
+_KUBERNETES_ENV_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 class KubernetesList(Protocol):
@@ -88,6 +100,34 @@ class KubernetesClient(Protocol):
         """List Kubernetes Pods in the selected namespace."""
 
 
+def create_incluster_kubernetes_client() -> KubernetesClient:
+    """Create a KubernetesClient backed by in-cluster ServiceAccount auth."""
+    try:
+        kubernetes_client = importlib.import_module("kubernetes.client")
+        kubernetes_config = importlib.import_module("kubernetes.config")
+    except ModuleNotFoundError as exc:
+        missing_module = exc.name
+        if missing_module in {"kubernetes", "kubernetes.client", "kubernetes.config"}:
+            raise RuntimeError(
+                "Kubernetes Python client package is required for the Kubernetes "
+                "executor. Install the official 'kubernetes' package in the "
+                "SuperExec environment."
+            ) from exc
+        raise
+
+    try:
+        kubernetes_config.load_incluster_config()
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        raise RuntimeError(
+            "Failed to load in-cluster Kubernetes configuration for the Kubernetes "
+            "executor. Run SuperExec in a Kubernetes Pod with ServiceAccount "
+            "credentials."
+        ) from exc
+
+    client: KubernetesClient = kubernetes_client.CoreV1Api()
+    return client
+
+
 @dataclass
 class KubernetesExecutorConfig:  # pylint: disable=too-many-instance-attributes
     """Configuration needed to build one TaskExecutor Pod and Secret.
@@ -111,6 +151,9 @@ class KubernetesExecutorConfig:  # pylint: disable=too-many-instance-attributes
         Optional Flower resource-pool label value.
     resources : JSONObject | None
         Optional Kubernetes container resource requests and limits.
+    env : list[JSONObject] | None
+        Optional explicit TaskExecutor container environment. Only literal
+        name/value entries are supported.
     node_selector : dict[str, str] | None
         Optional Kubernetes nodeSelector.
     tolerations : list[JSONObject] | None
@@ -136,6 +179,7 @@ class KubernetesExecutorConfig:  # pylint: disable=too-many-instance-attributes
     annotations: dict[str, str] | None = None
     resource_pool: str | None = None
     resources: JSONObject | None = None
+    env: list[JSONObject] | None = None
     node_selector: dict[str, str] | None = None
     tolerations: list[JSONObject] | None = None
     affinity: JSONObject | None = None
@@ -149,6 +193,11 @@ class KubernetesExecutorConfig:  # pylint: disable=too-many-instance-attributes
     capacity_log_interval: float | None = None
     sleep: Callable[[float], None] = time.sleep
     monotonic: Callable[[], float] = time.monotonic
+
+    def __post_init__(self) -> None:
+        """Validate config values used to build TaskExecutor Pods."""
+        if self.env is not None:
+            self.env = _taskexecutor_env(self.env)
 
 
 class KubernetesExecutor:
@@ -172,6 +221,7 @@ class KubernetesExecutor:
             return
 
         last_log_at: float | None = None
+        waited_for_capacity = False
         while True:
             try:
                 active_pod_count = self._active_pod_count()
@@ -185,6 +235,9 @@ class KubernetesExecutor:
                 )
                 return
             if active_pod_count < self._config.active_pod_budget:
+                if waited_for_capacity:
+                    self._last_completed_pod_sweep_at = self._config.monotonic()
+                    self._sweep_completed_pods()
                 return
 
             if self._config.capacity_log_interval is not None:
@@ -203,6 +256,7 @@ class KubernetesExecutor:
                     )
                     last_log_at = now
 
+            waited_for_capacity = True
             self._config.sleep(self._config.capacity_poll_interval)
 
     def _sweep_completed_pods_if_due(self) -> None:
@@ -216,6 +270,10 @@ class KubernetesExecutor:
             return
 
         self._last_completed_pod_sweep_at = now
+        self._sweep_completed_pods()
+
+    def _sweep_completed_pods(self) -> None:
+        """Run best-effort completed Pod cleanup."""
         try:
             self._completed_pod_sweeper.sweep()
         except Exception:  # pylint: disable=broad-exception-caught
@@ -388,6 +446,8 @@ def _build_taskexecutor_pod(
         container["imagePullPolicy"] = config.image_pull_policy
     if config.resources is not None:
         container["resources"] = config.resources
+    if config.env is not None:
+        container["env"] = config.env
     if config.container_security_context is not None:
         container["securityContext"] = config.container_security_context
 
@@ -448,6 +508,48 @@ def _taskexecutor_args(
         args.append("--allow-runtime-dependency-installation")
 
     return args
+
+
+def _taskexecutor_env(env: list[JSONObject]) -> list[JSONObject]:
+    """Build validated TaskExecutor container environment entries."""
+    if not isinstance(env, list):
+        raise ValueError("TaskExecutor env must be a list of mappings.")
+    entries: list[JSONObject] = []
+    for entry in env:
+        if not isinstance(entry, dict):
+            raise ValueError("TaskExecutor env entries must be mappings.")
+        # Keep this path limited to non-secret literal config. Design secret
+        # references separately before allowing them into TaskExecutor Pods.
+        if "valueFrom" in entry:
+            raise ValueError(
+                "TaskExecutor env entries support literal 'value' only; "
+                "'valueFrom' is not supported."
+            )
+        if set(entry) != {"name", "value"}:
+            raise ValueError(
+                "TaskExecutor env entries must contain exactly 'name' and 'value'."
+            )
+        name = entry["name"]
+        value = entry["value"]
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("TaskExecutor env names must be non-empty strings.")
+        # Validate env name locally so invalid executor config fails before Pod creation
+        if not _KUBERNETES_ENV_NAME_PATTERN.fullmatch(name):
+            raise ValueError(
+                f"TaskExecutor env name {name!r} must be a valid Kubernetes "
+                "environment variable name."
+            )
+        if not isinstance(value, str):
+            raise ValueError(f"TaskExecutor env value for {name!r} must be a string.")
+        # Reject task-visible provider API key env names before Pod construction
+        if name in _FORBIDDEN_TASKEXECUTOR_ENV_NAMES:
+            raise ValueError(
+                f"TaskExecutor env name {name!r} is not allowed because it is a "
+                "provider API key."
+            )
+        # Copy only the validated Kubernetes env shape into the generated Pod spec.
+        entries.append({"name": name, "value": value})
+    return entries
 
 
 def _get_appio_root_certificates(
