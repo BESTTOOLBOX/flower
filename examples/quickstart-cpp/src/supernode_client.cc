@@ -336,11 +336,15 @@ ObjectBundle make_recorddict_object(const flwr::proto::RecordDict &recorddict) {
       child = make_array_record_object(item.array_record());
     } else if (item.has_config_record()) {
       std::string body;
-      item.config_record().SerializeToString(&body);
+      if (!item.config_record().SerializeToString(&body)) {
+        throw std::runtime_error("Failed to serialize ConfigRecord");
+      }
       child = make_leaf_object("ConfigRecord", body);
     } else if (item.has_metric_record()) {
       std::string body;
-      item.metric_record().SerializeToString(&body);
+      if (!item.metric_record().SerializeToString(&body)) {
+        throw std::runtime_error("Failed to serialize MetricRecord");
+      }
       child = make_leaf_object("MetricRecord", body);
     } else {
       continue;
@@ -376,7 +380,9 @@ ObjectBundle make_message_object(const flwr::proto::Message &message) {
   body_message.mutable_metadata()->set_message_id("");
   body_message.clear_content();
   std::string body;
-  body_message.SerializeToString(&body);
+  if (!body_message.SerializeToString(&body)) {
+    throw std::runtime_error("Failed to serialize reply Message");
+  }
 
   ObjectBundle bundle;
   const std::string content =

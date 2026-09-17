@@ -1,6 +1,10 @@
 #include "recorddict_serde.h"
 
+#include <algorithm>
+#include <cctype>
 #include <stdexcept>
+#include <utility>
+#include <vector>
 
 namespace flwr_quickstart {
 namespace {
@@ -191,11 +195,43 @@ config_record_from_proto(const flwr::proto::ConfigRecord &record) {
   return out;
 }
 
+// Record keys produced by `parameters_to_parameters_record` are decimal
+// indices ("0", "1", ...). `std::map` orders them lexicographically, so once a
+// key reaches two digits "10" sorts before "2" and the tensors are stitched
+// back together in the wrong order. That starts at the 11th tensor: with 10 or
+// fewer every key is a single digit, where lexicographic and numeric order
+// coincide. Sort numerically when every key is a non-negative integer, and fall
+// back to the map's deterministic lexicographic order otherwise.
+bool is_decimal_index(const std::string &key) {
+  if (key.empty()) {
+    return false;
+  }
+  return std::all_of(key.begin(), key.end(),
+                     [](unsigned char c) { return std::isdigit(c) != 0; });
+}
+
+std::vector<std::pair<std::string, flwr_local::Array>>
+records_in_tensor_order(const flwr_local::ParametersRecord &record) {
+  std::vector<std::pair<std::string, flwr_local::Array>> ordered(record.begin(),
+                                                                 record.end());
+  const bool all_indices = std::all_of(
+      ordered.begin(), ordered.end(),
+      [](const auto &entry) { return is_decimal_index(entry.first); });
+  if (!all_indices) {
+    return ordered;
+  }
+  std::stable_sort(ordered.begin(), ordered.end(),
+                   [](const auto &lhs, const auto &rhs) {
+                     return std::stoull(lhs.first) < std::stoull(rhs.first);
+                   });
+  return ordered;
+}
+
 flwr_local::Parameters
 parameters_record_to_parameters(const flwr_local::ParametersRecord &record) {
   std::list<std::string> tensors;
   std::string tensor_type;
-  for (const auto &[_, array] : record) {
+  for (const auto &[_, array] : records_in_tensor_order(record)) {
     tensors.push_back(array.data);
     if (tensor_type.empty()) {
       tensor_type = array.stype;
